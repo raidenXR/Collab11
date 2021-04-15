@@ -16,9 +16,12 @@ namespace MGclb
             }
         }
 
-        SpriteBatch batch;
-        Particles explosion;
-        MouseState prevMouse;
+        private SpriteBatch batch;
+        private Particles explosion;
+        private MouseState prevMouse;
+        private System.Numerics.Vector2 position = new System.Numerics.Vector2(45, 85);
+        private Random rand = new Random();
+        private BasicEffect effect;
 
         public Program()
         {
@@ -28,8 +31,9 @@ namespace MGclb
 
         protected override void LoadContent()
         {
-            explosion = new Particles(new System.Numerics.Vector2(45, 85));
-            explosion.Effect = new BasicEffect(GraphicsDevice);
+            effect = new BasicEffect(GraphicsDevice);
+            explosion = Particles.CreateSource(position, rand.Next(10, 101));
+            explosion.Effect = effect;
 
             base.LoadContent();
         }
@@ -37,11 +41,17 @@ namespace MGclb
         protected override void Update(GameTime gameTime)
         {
             MouseState mouse = Mouse.GetState();
-            if(mouse.LeftButton == ButtonState.Released 
+            if (mouse.LeftButton == ButtonState.Released
                 && prevMouse.LeftButton == ButtonState.Pressed)
             {
-                explosion.Center = new System.Numerics.Vector2(mouse.X, mouse.Y);
-                explosion.ResetColor();
+                position = new System.Numerics.Vector2(mouse.X, mouse.Y);
+            }
+
+            if (!explosion.IsActive)
+            {
+                Particles.ReturnSource(ref explosion);
+                explosion = Particles.CreateSource(position, rand.Next(10, 101));
+                explosion.Effect = effect;
             }
 
             explosion.Update(gameTime.ElapsedGameTime.TotalMilliseconds);

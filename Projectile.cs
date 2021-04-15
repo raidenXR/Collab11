@@ -64,7 +64,7 @@ namespace Collab11
     public struct Particle
     {
         public Vector2 Position;
-        public Vector2 Scale;
+        public Vector2 Size;
         public Vector2 Direction;
         public Vector2 Destination;
         public Vector2 Speed;
@@ -100,7 +100,7 @@ namespace Collab11
         public readonly int Vertices => ((Sides - 1) * 3) + 3;
 
         public readonly Matrix3x2 Transform => Matrix3x2.Identity 
-                                               * Matrix3x2.CreateScale(Scale)                                            
+                                               * Matrix3x2.CreateScale(Size)                                            
                                                * Matrix3x2.CreateRotation(Rotation)
                                                * Matrix3x2.CreateTranslation(Position);
 
@@ -146,18 +146,20 @@ namespace Collab11
 
     public class Particles
     {
-        Vector2 position;
-        int count;
+        private int count;
         private Particle[] particles; 
         private PositionColor[] vertexData;
-        
-        public BasicEffect Effect { get; set; }
 
-        static Random rand = new Random();
-        static Stack<PositionColor> pool = new Stack<PositionColor>();
+        private static Stack<Particle[]> particlesPool = new Stack<Particle[]>();
+        private static Stack<PositionColor[]> vertexDataPool = new Stack<PositionColor[]>();
+        private static Random rand = new Random();
+
+        public BasicEffect Effect { get; set; }
+        public bool IsActive => count > 0;              
 
         const int minTime = 1500;
         const int maxTime = 2500;
+        public const int Capacity = 100; // max particle count = Capacity
 
         #region fields
         public Vector2 Center = new Vector2(400, 300);
@@ -176,28 +178,38 @@ namespace Collab11
         XNA.Color fill, stroke;
         XNA.Color fillVariance, strokeVariance;        
         #endregion
+                
 
-        ~Particles()
+        private Particles(Vector2 position, int count)
         {
-            Effect.Dispose();
-        }
-
-        public Particles(Vector2 position)
-        {
-            this.position = position;
-            particles = new Particle[100];
-            vertexData = new PositionColor[particles.Length * Particle.MaxVertices];
-
+            this.count = Math.Clamp(1, count, Capacity);
+            this.Center = position;  
             ResetColor();
-
-#if DEBUG
-            Console.WriteLine(vertexData.Length);
-            Console.WriteLine();
-#endif
         }
+
+
+        public static Particles CreateSource(Vector2 position, int count)
+        {
+            Particles source = new Particles(position, count);
+            source.particles = particlesPool.Count < 1 ? new Particle[Capacity] : particlesPool.Pop();
+            source.vertexData = vertexDataPool.Count < 1 ? new PositionColor[Capacity * Particle.MaxVertices] : vertexDataPool.Pop();
+            source.EmitParticles();
+
+            return source;
+        }
+
+        public static void ReturnSource(ref Particles source)
+        {
+            particlesPool.Push(source.particles);
+            vertexDataPool.Push(source.vertexData);
+            source.Effect = null;
+            source.particles = null;
+            source.vertexData = null;
+            source = null;
+        }
+        
 
         #region methods
-
         public void ResetColor()
         {
             fill.R = (byte)rand.Next(150, 256);
@@ -215,16 +227,16 @@ namespace Collab11
         {
             float lifeSpan = rand.Next(minTime, maxTime);
 
-            for (count = 0; count < particles.Length; count++)
+            for (int i = 0; i < count; i++)
             {
-                particles[count] = ExplosionEmit(Center + new Vector2(rand.Next(-100, 100), rand.Next(100, 100)), lifeSpan);
+                particles[i] = ExplosionEmit(Center + new Vector2(rand.Next(-100, 100), rand.Next(100, 100)), lifeSpan);
             }
         }
 
 
         public void Update(double dt)
         {
-            if(count == 0) EmitParticles();
+            //if(count == 0) EmitParticles();
 
             for (int i = 0; i < count; i++)
             {
@@ -233,8 +245,8 @@ namespace Collab11
                 particle.IsActive = particle.LifeSpan > 0 ? true : false;
 
                 if (!particle.IsActive 
-                    || particle.Scale.X <= 0f 
-                    || particle.Scale.Y <= 0f)
+                    || particle.Size.X <= 0f 
+                    || particle.Size.Y <= 0f)
                 {
                     particles[i--] = particles[--count];
                 }                
@@ -283,7 +295,7 @@ namespace Collab11
 
             particle.Speed += speed;            
             particle.Rotation += rotation * dt;
-            particle.Scale += scale;
+            particle.Size += scale;
             particle.Position += particle.Direction * particle.Speed * dt / 5f;
         }
 
@@ -307,7 +319,7 @@ namespace Collab11
                 Fill = fill,
                 Position = Center,
                 LifeSpan = lifeSpan,
-                Scale = new Vector2(rand.Next(20, 30)) + new Vector2(scaleVariance),
+                Size = new Vector2(rand.Next(20, 30)) + new Vector2(scaleVariance),
                 Direction = direction,
                 Speed = (destination - Center) / 100f + new Vector2(speedVariance),
                 Destination = destination
